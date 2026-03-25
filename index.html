@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シフト表自動生成ツール</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .panel {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+        }
+
+        .controls {
+            flex: 1;
+            min-width: 320px;
+        }
+
+        .preview {
+            flex: 2;
+            min-width: 600px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #bbb;
+        }
+
+        input[type="time"],
+        input[type="number"],
+        input[type="file"],
+        input[type="text"],
+        input[type="date"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #2d2d2d;
+            color: #fff;
+            color-scheme: dark;
+            font-family: sans-serif;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #66b2ff;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .time-range {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button {
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 1em;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #0073e6;
+        }
+
+        .btn-success {
+            background-color: #28a745;
+        }
+
+        .btn-success:hover {
+            background-color: #34ce57;
+        }
+
+        canvas {
+            max-width: 100%;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+            color: #fff;
+        }
+
+        .shift-day-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+            font-size: 0.85em;
+        }
+
+        .shift-day-item:last-child {
+            border-bottom: none;
+        }
+
+        .shift-day-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 4px;
+            background: #222;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="panel controls">
+            <h2>入力設定</h2>
+            <div class="form-group">
+                <label>ベース画像アップロード</label>
+                <input type="file" id="baseImage" accept="image/jpeg, image/png">
+            </div>
+            <div class="form-group time-range">
+                <div style="flex:1">
+                    <label>対象年</label>
+                    <input type="number" id="year" value="2024">
+                </div>
+                <div style="flex:1">
+                    <label>対象月 (20日締め)</label>
+                    <input type="number" id="month" value="4" min="1" max="12">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label><input type="checkbox" id="sat1Enable" checked> 土曜日シフトその1 (午前/A枠)</label>
+                <div class="time-range">
+                    <input type="time" id="sat1Start" value="09:00"> ～ <input type="time" id="sat1End" value="13:00">
+                </div>
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" id="sat2Enable" checked> 土曜日シフトその2 (午後/B枠)</label>
+                <div class="time-range">
+                    <input type="time" id="sat2Start" value="14:00"> ～ <input type="time" id="sat2End" value="18:00">
+                </div>
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" id="wedEnable" checked> 水曜日シフト (第1・第3 / A枠)</label>
+                <div class="time-range">
+                    <input type="time" id="wedStart" value="17:00"> ～ <input type="time" id="wedEnd" value="21:00">
+                </div>
+            </div>
+
+            <div class="form-group time-range">
+                <div style="flex:1">
+                    <label>時給 (円)</label>
+                    <input type="number" id="wage" value="1200">
+                </div>
+                <div style="flex:1">
+                    <label>片道交通費 (円)</label>
+                    <input type="number" id="transportCost" value="500">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>提出日</label>
+                <input type="date" id="submitDate">
+            </div>
+
+            <div class="form-group time-range">
+                <div style="flex:1">
+                    <label>氏名</label>
+                    <input type="text" id="name" placeholder="山田 太郎">
+                </div>
+                <div style="flex:1">
+                    <label>電話番号</label>
+                    <input type="text" id="phone" placeholder="090-XXXX-XXXX">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>住所 (2行まで入力可)</label>
+                <textarea id="address" placeholder="東京都○○区△△ 1-2-3&#10;マンション名 101号室"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>個別シフト調整 (行かない日はチェックを外す)</label>
+                <div id="shiftDayList" class="shift-day-list"></div>
+            </div>
+
+            <div class="form-group">
+                <label style="display: inline-block; cursor: pointer;">
+                    <input type="checkbox" id="autoOutput"> 入力時に自動でプレビューを更新する
+                </label>
+            </div>
+
+            <button onclick="generateImage(true)">シフト表を出力する</button>
+            <button onclick="downloadImage()" class="btn-success">画像をダウンロード</button>
+        </div>
+
+        <div class="panel preview">
+            <h2>プレビュー</h2>
+            <canvas id="canvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let loadedImage = null;
+
+        document.getElementById('baseImage').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                const img = new Image();
+                img.onload = function () {
+                    loadedImage = img;
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // 入力の永続化 (localStorage)
+        const storageKey = 'shift_schedule_data';
+        const inputIds = [
+            'year', 'month', 'sat1Start', 'sat1End', 'sat2Start', 'sat2End', 'wedStart', 'wedEnd',
+            'wage', 'transportCost', 'submitDate', 'name', 'phone', 'address',
+            'sat1Enable', 'sat2Enable', 'wedEnable', 'autoOutput'
+        ];
+
+        function saveToStorage() {
+            const data = {};
+            inputIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el.type === 'checkbox') {
+                    data[id] = el.checked;
+                } else {
+                    data[id] = el.value;
+                }
+            });
+            localStorage.setItem(storageKey, JSON.stringify(data));
+        }
+
+        function loadFromStorage() {
+            const json = localStorage.getItem(storageKey);
+            if (!json) return;
+            const data = JSON.parse(json);
+            inputIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (data[id] !== undefined) {
+                    if (el.type === 'checkbox') {
+                        el.checked = data[id];
+                    } else {
+                        el.value = data[id];
+                    }
+                }
+            });
+        }
+
+        window.onload = function () {
+            loadFromStorage();
+            updateShiftDayList();
+        };
+
+        inputIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', () => {
+                saveToStorage();
+                if (['year', 'month', 'sat1Enable', 'sat2Enable', 'wedEnable', 'sat1Start', 'sat1End', 'sat2Start', 'sat2End', 'wedStart', 'wedEnd'].includes(id)) {
+                    updateShiftDayList();
+                }
+                if (document.getElementById('autoOutput').checked) {
+                    generateImage(false);
+                }
+            });
+            if (el.type === 'checkbox') {
+                el.addEventListener('change', () => {
+                    saveToStorage();
+                    if (['sat1Enable', 'sat2Enable', 'wedEnable'].includes(id)) {
+                        updateShiftDayList();
+                    }
+                    if (document.getElementById('autoOutput').checked) {
+                        generateImage(false);
+                    }
+                });
+            }
+        });
+
+        function getProposedShifts() {
+            const year = parseInt(document.getElementById('year').value);
+            const month = parseInt(document.getElementById('month').value);
+            const sat1Enable = document.getElementById('sat1Enable').checked;
+            const sat1S = document.getElementById('sat1Start').value;
+            const sat1E = document.getElementById('sat1End').value;
+            const sat2Enable = document.getElementById('sat2Enable').checked;
+            const sat2S = document.getElementById('sat2Start').value;
+            const sat2E = document.getElementById('sat2End').value;
+            const wedEnable = document.getElementById('wedEnable').checked;
+            const wedS = document.getElementById('wedStart').value;
+            const wedE = document.getElementById('wedEnd').value;
+
+            let startMonth = month - 2;
+            let targetYear = year;
+            if (startMonth < 0) {
+                startMonth += 12;
+                targetYear--;
+            }
+            const startDate = new Date(targetYear, startMonth, 21);
+            const endDate = new Date(year, month - 1, 20);
+
+            let shifts = [];
+            let current = new Date(startDate);
+
+            while (current <= endDate && shifts.length < 20) {
+                let dayOfWeek = current.getDay();
+                let mStr = `${current.getMonth() + 1}月`;
+                let dStr = `${current.getDate()}`;
+                let fullDateStr = `${current.getFullYear()}-${current.getMonth() + 1}-${current.getDate()}`;
+
+                if (dayOfWeek === 6) { // 土曜
+                    let shift = { id: fullDateStr, monthLabel: mStr, dayLabel: dStr, dayStr: '土', a: { s: "", e: "", hrs: 0 }, b: { s: "", e: "", hrs: 0 } };
+                    if (sat1Enable) {
+                        shift.a = { s: sat1S, e: sat1E, hrs: calcHours(sat1S, sat1E) };
+                    }
+                    if (sat2Enable) {
+                        shift.b = { s: sat2S, e: sat2E, hrs: calcHours(sat2S, sat2E) };
+                    }
+                    if (sat1Enable || sat2Enable) shifts.push(shift);
+                } else if (dayOfWeek === 3 && wedEnable) { // 水曜
+                    let week = getWeekOfMonth(current);
+                    if (week === 1 || week === 3) {
+                        shifts.push({
+                            id: fullDateStr,
+                            monthLabel: mStr, dayLabel: dStr, dayStr: '水',
+                            a: { s: wedS, e: wedE, hrs: calcHours(wedS, wedE) },
+                            b: { s: "", e: "", hrs: 0 }
+                        });
+                    }
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            return shifts;
+        }
+
+        function updateShiftDayList() {
+            const container = document.getElementById('shiftDayList');
+            const shifts = getProposedShifts();
+            const savedData = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            const individualStates = savedData.individualShifts || {};
+
+            container.innerHTML = '';
+            shifts.forEach((shift, index) => {
+                const div = document.createElement('div');
+                div.className = 'shift-day-item';
+
+                const isChecked = individualStates[shift.id] !== false; // デフォルトはtrue
+
+                let timeStr = "";
+                if (shift.a.s) timeStr += `${shift.a.s}~${shift.a.e}`;
+                if (shift.b.s) timeStr += (timeStr ? " / " : "") + `${shift.b.s}~${shift.b.e}`;
+
+                div.innerHTML = `
+                    <input type="checkbox" id="dayShift_${index}" data-id="${shift.id}" ${isChecked ? 'checked' : ''}>
+                    <label for="dayShift_${index}" style="margin-bottom:0; font-weight:normal; cursor:pointer;">
+                        ${shift.monthLabel}${shift.dayLabel} (${shift.dayStr}) ${timeStr}
+                    </label>
+                `;
+
+                const cb = div.querySelector('input');
+                cb.addEventListener('change', () => {
+                    saveToStorage();
+                    if (document.getElementById('autoOutput').checked) {
+                        generateImage(false);
+                    }
+                });
+
+                container.appendChild(div);
+            });
+        }
+
+        const originalSaveToStorage = saveToStorage;
+        saveToStorage = function () {
+            const data = {};
+            inputIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el.type === 'checkbox') {
+                    data[id] = el.checked;
+                } else {
+                    data[id] = el.value;
+                }
+            });
+
+            // 個別シフトの状態を保存
+            const individualShifts = {};
+            document.querySelectorAll('#shiftDayList input[type="checkbox"]').forEach(cb => {
+                individualShifts[cb.getAttribute('data-id')] = cb.checked;
+            });
+            data.individualShifts = individualShifts;
+
+            localStorage.setItem(storageKey, JSON.stringify(data));
+        };
+
+        function calcHours(start, end) {
+            if (!start || !end) return 0;
+            const [h1, m1] = start.split(':').map(Number);
+            const [h2, m2] = end.split(':').map(Number);
+            const diff = (h2 + m2 / 60) - (h1 + m1 / 60);
+            return diff > 0 ? diff : 0;
+        }
+
+        function getWeekOfMonth(date) {
+            return Math.floor((date.getDate() - 1) / 7) + 1;
+        }
+
+        function generateImage(isManual = true) {
+            if (!loadedImage) {
+                if (isManual) alert("まずはベースとなるシフト表画像をアップロードしてください。");
+                return;
+            }
+
+            // 入力値の取得
+            const year = parseInt(document.getElementById('year').value);
+            const month = parseInt(document.getElementById('month').value);
+
+            const sat1Enable = document.getElementById('sat1Enable').checked;
+            const sat1S = document.getElementById('sat1Start').value;
+            const sat1E = document.getElementById('sat1End').value;
+
+            const sat2Enable = document.getElementById('sat2Enable').checked;
+            const sat2S = document.getElementById('sat2Start').value;
+            const sat2E = document.getElementById('sat2End').value;
+
+            const wedEnable = document.getElementById('wedEnable').checked;
+            const wedS = document.getElementById('wedStart').value;
+            const wedE = document.getElementById('wedEnd').value;
+
+            const wage = parseInt(document.getElementById('wage').value) || 0;
+            const transport = parseInt(document.getElementById('transportCost').value) || 0;
+            const submitDate = document.getElementById('submitDate').value;
+            const name = document.getElementById('name').value;
+            const phone = document.getElementById('phone').value;
+            const address = document.getElementById('address').value;
+
+            // 個別シフトのチェック状態を取得
+            const individualStates = {};
+            document.querySelectorAll('#shiftDayList input[type="checkbox"]').forEach(cb => {
+                individualStates[cb.getAttribute('data-id')] = cb.checked;
+            });
+
+            // 画像をリセット
+            ctx.drawImage(loadedImage, 0, 0);
+
+            // 描画設定
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.fillStyle = 'black';
+            ctx.font = `${Math.round(h * 0.016)}px sans-serif`;
+            ctx.textBaseline = 'middle';
+
+            // 対象年月の書き込み
+            const year2Digit = String(year).slice(-2);
+            ctx.textAlign = 'center';
+            ctx.fillText(year2Digit, w * 0.125, h * 0.054);
+            ctx.fillText(month, w * 0.28, h * 0.054);
+
+            // シフトの取得とフィルタリング
+            const allProposedShifts = getProposedShifts();
+            const shifts = allProposedShifts.filter(s => individualStates[s.id] !== false);
+
+            // シフトの描画
+            const gridX = 0.038, gridY = 0.12, stepX = 0.142, stepY = 0.115;
+            let rowTotalsA = [0, 0, 0, 0], rowTotalsB = [0, 0, 0, 0];
+            let totalA = 0, totalB = 0;
+
+            shifts.forEach((shift, i) => {
+                let row = Math.floor(i / 5);
+                let col = i % 5;
+                let bx = w * (gridX + col * stepX);
+                let by = h * (gridY + row * stepY);
+
+                // 月 と 日(数値のみ) と 曜日
+                ctx.textAlign = 'center';
+                ctx.fillText(shift.monthLabel, bx + w * 0.027, by + h * 0.012);
+                ctx.fillText(shift.dayLabel, bx + w * 0.027, by + h * 0.028);
+                ctx.fillText(shift.dayStr, bx + w * 0.055, by + h * 0.02);
+
+                // A枠
+                if (shift.a.s) {
+                    ctx.fillText(shift.a.s, bx + w * 0.065, by + h * 0.045);
+                    ctx.fillText(shift.a.e, bx + w * 0.065, by + h * 0.060);
+                    rowTotalsA[row] += shift.a.hrs;
+                    totalA += shift.a.hrs;
+                }
+                // B枠
+                if (shift.b.s) {
+                    ctx.fillText(shift.b.s, bx + w * 0.065, by + h * 0.085);
+                    ctx.fillText(shift.b.e, bx + w * 0.065, by + h * 0.100);
+                    rowTotalsB[row] += shift.b.hrs;
+                    totalB += shift.b.hrs;
+                }
+            });
+
+            // 右端の横列合計時間
+            ctx.textAlign = 'right';
+            for (let r = 0; r < 4; r++) {
+                let ry = h * (gridY + r * stepY);
+                if (rowTotalsA[r] > 0) ctx.fillText(rowTotalsA[r], w * 0.86, ry + h * 0.05);
+                if (rowTotalsB[r] > 0) ctx.fillText(rowTotalsB[r], w * 0.86, ry + h * 0.09);
+            }
+
+            // 給与計算と印字
+            ctx.textAlign = 'right';
+            const salaryA = totalA * wage;
+            const salaryB = totalB * wage;
+            const totalSalary = salaryA + salaryB;
+
+            ctx.fillText(totalA, w * 0.14, h * 0.615); // 合計その1
+            ctx.fillText(totalB, w * 0.14, h * 0.675); // 合計その2
+
+            if (wage > 0) {
+                ctx.fillText(wage, w * 0.28, h * 0.615); // A枠時給
+                ctx.fillText(wage, w * 0.28, h * 0.675); // B枠時給
+                ctx.fillText(salaryA.toLocaleString(), w * 0.45, h * 0.615); // A枠金額
+                ctx.fillText(salaryB.toLocaleString(), w * 0.45, h * 0.675); // B枠金額
+                ctx.fillText(totalSalary.toLocaleString(), w * 0.45, h * 0.72); // 合計
+            }
+
+            // 交通費計算と印字
+            let daysWorked = shifts.length;
+            let trips = daysWorked * 2;
+            let totalTransport = transport * trips;
+
+            ctx.textAlign = 'right';
+            ctx.fillText(transport.toLocaleString(), w * 0.61, h * 0.64); // 片道
+            ctx.fillText(trips, w * 0.71, h * 0.64); // 回数
+            ctx.fillText(totalTransport.toLocaleString(), w * 0.86, h * 0.64); // 交通費合計
+            ctx.fillText(totalTransport.toLocaleString(), w * 0.86, h * 0.74); // 合計
+
+            const grandTotal = totalSalary + totalTransport;
+            ctx.fillText(grandTotal.toLocaleString(), w * 0.85, h * 0.89);
+
+            // 提出日の印字
+            if (submitDate) {
+                const sd = new Date(submitDate);
+                ctx.textAlign = 'center';
+                ctx.fillText(sd.getFullYear(), w * 0.15, h * 0.782);
+                ctx.fillText(sd.getMonth() + 1, w * 0.24, h * 0.782);
+                ctx.fillText(sd.getDate(), w * 0.30, h * 0.782);
+            }
+
+            // 氏名・電話番号・住所の印字
+            ctx.textAlign = 'left';
+            ctx.font = `${Math.round(h * 0.018)}px sans-serif`; // 少し文字を大きく
+            if (name) ctx.fillText(name, w * 0.125, h * 0.852); // ちょい右下 (0.12, 0.85 -> 0.125, 0.852)
+            if (phone) ctx.fillText(phone, w * 0.385, h * 0.852); // ちょい右下 (0.38, 0.85 -> 0.385, 0.852)
+
+            // 住所 (改行対応)
+            if (address) {
+                const lines = address.split('\n');
+                if (lines[0]) ctx.fillText(lines[0], w * 0.12, h * 0.905);
+                if (lines[1]) ctx.fillText(lines[1], w * 0.12, h * 0.935); // 改行幅調整 (0.94 -> 0.935)
+            }
+        }
+
+        function downloadImage() {
+            if (!loadedImage) return;
+            const link = document.createElement('a');
+            link.download = 'シフト表_記入済.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+
+</body>
+
+</html>
