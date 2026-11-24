@@ -141,6 +141,36 @@
             border-bottom: none;
         }
 
+        .extra-shift-form {
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            background: #222;
+        }
+
+        .extra-shift-form .slot-label {
+            font-size: 0.8em;
+            color: #999;
+            margin: 8px 0 3px;
+        }
+
+        .extra-tag {
+            font-size: 0.8em;
+            color: #ffb84d;
+        }
+
+        .shift-day-item button.btn-remove {
+            width: auto;
+            margin: 0 0 0 auto;
+            padding: 2px 8px;
+            font-size: 0.85em;
+            background-color: #6c2a2a;
+        }
+
+        .shift-day-item button.btn-remove:hover {
+            background-color: #a33;
+        }
+
         .shift-day-list {
             max-height: 200px;
             overflow-y: auto;
@@ -229,6 +259,22 @@
             </div>
 
             <div class="form-group">
+                <label>シフトを手動で追加</label>
+                <div class="extra-shift-form">
+                    <input type="date" id="extraDate">
+                    <div class="slot-label">A枠 (その1)</div>
+                    <div class="time-range">
+                        <input type="time" id="extraAStart"> ～ <input type="time" id="extraAEnd">
+                    </div>
+                    <div class="slot-label">B枠 (その2) ※不要なら空欄</div>
+                    <div class="time-range">
+                        <input type="time" id="extraBStart"> ～ <input type="time" id="extraBEnd">
+                    </div>
+                    <button type="button" onclick="addExtraShift()">シフトを追加</button>
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label style="display: inline-block; cursor: pointer;">
                     <input type="checkbox" id="autoOutput"> 入力時に自動でプレビューを更新する
                 </label>
@@ -287,10 +333,14 @@
             localStorage.setItem(storageKey, JSON.stringify(data));
         }
 
+        // 手動で追加したシフト [{date:'YYYY-MM-DD', a:{s,e}, b:{s,e}}]
+        let extraShifts = [];
+
         function loadFromStorage() {
             const json = localStorage.getItem(storageKey);
             if (!json) return;
             const data = JSON.parse(json);
+            extraShifts = Array.isArray(data.extraShifts) ? data.extraShifts : [];
             inputIds.forEach(id => {
                 const el = document.getElementById(id);
                 if (data[id] !== undefined) {
@@ -346,47 +396,119 @@
             const wedS = document.getElementById('wedStart').value;
             const wedE = document.getElementById('wedEnd').value;
 
+            const { startDate, endDate } = getPeriod(year, month);
+
+            // 手動追加分 (対象期間内のみ)
+            const extraByDate = {};
+            extraShifts.forEach(x => {
+                const d = parseDateStr(x.date);
+                if (!d || d < startDate || d > endDate) return;
+                extraByDate[toId(d)] = makeShift(d, x.a, x.b, true);
+            });
+
+            let shifts = [];
+            let current = new Date(startDate);
+
+            while (current <= endDate) {
+                let dayOfWeek = current.getDay();
+
+                if (dayOfWeek === 6) { // 土曜
+                    if (sat1Enable || sat2Enable) {
+                        shifts.push(makeShift(current,
+                            sat1Enable ? { s: sat1S, e: sat1E } : null,
+                            sat2Enable ? { s: sat2S, e: sat2E } : null));
+                    }
+                } else if (dayOfWeek === 3 && wedEnable) { // 水曜
+                    let week = getWeekOfMonth(current);
+                    if (week === 1 || week === 3) {
+                        shifts.push(makeShift(current, { s: wedS, e: wedE }, null));
+                    }
+                }
+                current.setDate(current.getDate() + 1);
+            }
+
+            // 同じ日付の手動追加があれば自動分を置き換え、なければ追加
+            shifts = shifts.filter(s => !extraByDate[s.id]);
+            shifts.push(...Object.values(extraByDate));
+            shifts.sort((p, q) => p.date - q.date);
+            return shifts.slice(0, 20); // 用紙の枠は20個まで
+        }
+
+        function getPeriod(year, month) {
             let startMonth = month - 2;
             let targetYear = year;
             if (startMonth < 0) {
                 startMonth += 12;
                 targetYear--;
             }
-            const startDate = new Date(targetYear, startMonth, 21);
-            const endDate = new Date(year, month - 1, 20);
+            return {
+                startDate: new Date(targetYear, startMonth, 21),
+                endDate: new Date(year, month - 1, 20)
+            };
+        }
 
-            let shifts = [];
-            let current = new Date(startDate);
+        function parseDateStr(str) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || '');
+            return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+        }
 
-            while (current <= endDate && shifts.length < 20) {
-                let dayOfWeek = current.getDay();
-                let mStr = `${current.getMonth() + 1}月`;
-                let dStr = `${current.getDate()}`;
-                let fullDateStr = `${current.getFullYear()}-${current.getMonth() + 1}-${current.getDate()}`;
+        function toId(d) {
+            return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+        }
 
-                if (dayOfWeek === 6) { // 土曜
-                    let shift = { id: fullDateStr, monthLabel: mStr, dayLabel: dStr, dayStr: '土', a: { s: "", e: "", hrs: 0 }, b: { s: "", e: "", hrs: 0 } };
-                    if (sat1Enable) {
-                        shift.a = { s: sat1S, e: sat1E, hrs: calcHours(sat1S, sat1E) };
-                    }
-                    if (sat2Enable) {
-                        shift.b = { s: sat2S, e: sat2E, hrs: calcHours(sat2S, sat2E) };
-                    }
-                    if (sat1Enable || sat2Enable) shifts.push(shift);
-                } else if (dayOfWeek === 3 && wedEnable) { // 水曜
-                    let week = getWeekOfMonth(current);
-                    if (week === 1 || week === 3) {
-                        shifts.push({
-                            id: fullDateStr,
-                            monthLabel: mStr, dayLabel: dStr, dayStr: '水',
-                            a: { s: wedS, e: wedE, hrs: calcHours(wedS, wedE) },
-                            b: { s: "", e: "", hrs: 0 }
-                        });
-                    }
-                }
-                current.setDate(current.getDate() + 1);
+        function makeShift(d, a, b, isExtra) {
+            const slot = t => (t && t.s && t.e) ? { s: t.s, e: t.e, hrs: calcHours(t.s, t.e) } : { s: "", e: "", hrs: 0 };
+            return {
+                id: toId(d), date: new Date(d), isExtra: !!isExtra,
+                monthLabel: `${d.getMonth() + 1}月`, dayLabel: `${d.getDate()}`,
+                dayStr: '日月火水木金土'[d.getDay()],
+                a: slot(a), b: slot(b)
+            };
+        }
+
+        function addExtraShift() {
+            const dateStr = document.getElementById('extraDate').value;
+            const aS = document.getElementById('extraAStart').value;
+            const aE = document.getElementById('extraAEnd').value;
+            const bS = document.getElementById('extraBStart').value;
+            const bE = document.getElementById('extraBEnd').value;
+
+            const d = parseDateStr(dateStr);
+            if (!d) { alert('日付を入力してください。'); return; }
+            const hasA = aS && aE, hasB = bS && bE;
+            if (!hasA && !hasB) { alert('A枠かB枠の開始・終了時刻を入力してください。'); return; }
+            if ((hasA && calcHours(aS, aE) <= 0) || (hasB && calcHours(bS, bE) <= 0)) {
+                alert('終了時刻は開始時刻より後にしてください。'); return;
             }
-            return shifts;
+
+            const year = parseInt(document.getElementById('year').value);
+            const month = parseInt(document.getElementById('month').value);
+            const { startDate, endDate } = getPeriod(year, month);
+            if (d < startDate || d > endDate) {
+                alert(`対象期間 (${startDate.getMonth() + 1}/${startDate.getDate()}～${endDate.getMonth() + 1}/${endDate.getDate()}) 外の日付です。`);
+                return;
+            }
+
+            // B枠だけ入力された場合はA枠に詰める
+            let a = hasA ? { s: aS, e: aE } : { s: bS, e: bE };
+            let b = (hasA && hasB) ? { s: bS, e: bE } : null;
+
+            extraShifts = extraShifts.filter(x => x.date !== dateStr);
+            extraShifts.push({ date: dateStr, a, b });
+
+            updateShiftDayList();
+            saveToStorage();
+            if (document.getElementById('autoOutput').checked) generateImage(false);
+        }
+
+        function removeExtraShift(id) {
+            extraShifts = extraShifts.filter(x => {
+                const d = parseDateStr(x.date);
+                return !d || toId(d) !== id;
+            });
+            updateShiftDayList();
+            saveToStorage();
+            if (document.getElementById('autoOutput').checked) generateImage(false);
         }
 
         function updateShiftDayList() {
@@ -410,8 +532,14 @@
                     <input type="checkbox" id="dayShift_${index}" data-id="${shift.id}" ${isChecked ? 'checked' : ''}>
                     <label for="dayShift_${index}" style="margin-bottom:0; font-weight:normal; cursor:pointer;">
                         ${shift.monthLabel}${shift.dayLabel} (${shift.dayStr}) ${timeStr}
+                        ${shift.isExtra ? '<span class="extra-tag">[追加]</span>' : ''}
                     </label>
+                    ${shift.isExtra ? '<button type="button" class="btn-remove" title="追加シフトを削除">✕</button>' : ''}
                 `;
+
+                if (shift.isExtra) {
+                    div.querySelector('.btn-remove').addEventListener('click', () => removeExtraShift(shift.id));
+                }
 
                 const cb = div.querySelector('input');
                 cb.addEventListener('change', () => {
@@ -443,6 +571,7 @@
                 individualShifts[cb.getAttribute('data-id')] = cb.checked;
             });
             data.individualShifts = individualShifts;
+            data.extraShifts = extraShifts;
 
             localStorage.setItem(storageKey, JSON.stringify(data));
         };
